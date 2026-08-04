@@ -27,8 +27,3 @@ __pycache__/
 .env
 *.bin
 audio-debug*.wav
-
-.agents/
-docs/
-AGENTS.md
-skills-lock.json
