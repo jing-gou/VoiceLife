@@ -1,70 +1,42 @@
 from __future__ import annotations
 
+import importlib.util
 import sys
 import unittest
 from pathlib import Path
-from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
-
-import voice_linx_serial_multiturn_test as harness  # noqa: E402
+SCRIPT = ROOT / "scripts" / "voice_linx_serial_multiturn_test.py"
 
 
-class FakeDevice:
-    def __init__(self) -> None:
-        self.writes: list[bytes] = []
-
-    def write(self, payload: bytes) -> None:
-        self.writes.append(payload)
-
-    def flush(self) -> None:
-        pass
+def load() -> object:
+    spec = importlib.util.spec_from_file_location("voice_linx_serial_multiturn_test", SCRIPT)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
-class ReorderedReadyLog:
-    def mark(self) -> int:
-        return 0
-
-    def wait_for(self, marker: str, after: int, timeout: float) -> tuple[int, str]:
-        del timeout
-        positions = {
-            "SERIAL_VOICE_CAPTURE_READY": 1,
-            "SERIAL_VOICE_TURN_BEGIN=ok": 2,
-        }
-        position = positions[marker]
-        if position < after:
-            raise TimeoutError(marker)
-        return position + 1, marker
-
-    def wait_for_any(self, markers: tuple[str, ...], after: int, timeout: float) -> tuple[int, str]:
-        del markers, after, timeout
-        raise TimeoutError("endpoint")
-
-    def contains_since(self, marker: str, after: int) -> bool:
-        del marker, after
-        return False
+MODULE = load()
 
 
-class RunTurnTest(unittest.TestCase):
-    def test_first_turn_accepts_capture_ready_before_begin_ack(self) -> None:
-        device = FakeDevice()
-        prepared = harness.PreparedTurn(input_text="测试", tts_ms=0, frames=[bytes(640), bytes(640)])
+class DisplayEvidenceTest(unittest.TestCase):
+    def test_sparkbot_requires_complete_text_trace_and_observes_scroll(self) -> None:
+        line = (
+            "SPARKBOT_TEXT_RENDER generation=1 revision=2 content_height=16 viewport_height=120 "
+            "overflow_width=4 manual_line_breaks=0 status=说话 content=你好 content_visible=1"
+        )
+        self.assertEqual(MODULE.display_evidence("sparkbot", [line], [], 0), (True, 1, True))
 
-        with mock.patch.object(harness, "serial", mock.Mock(SerialException=OSError)):
-            result = harness.run_turn(
-                device,
-                ReorderedReadyLog(),
-                index=1,
-                prepared=prepared,
-                response_timeout=1,
-                first_turn=True,
-                expect_terminal=False,
-                guard_observation_seconds=0,
-            )
-
-        self.assertEqual(result.pcm_frames_sent, 2)
-        self.assertEqual(result.error, "endpoint")
+    def test_pcb_requires_a_draw_for_every_turn_after_the_turn_starts(self) -> None:
+        results = [
+            MODULE.TurnResult(index=1, input_text="", log_start=1, log_end=3),
+            MODULE.TurnResult(index=2, input_text="", log_start=3, log_end=5),
+        ]
+        lines = ["DISPLAY_DRAW=1 boot", "state", "DISPLAY_DRAW=1 first", "state", "DISPLAY_DRAW=1 second"]
+        self.assertEqual(MODULE.display_evidence("pcb", lines, results, 2), (True, 2, False))
+        self.assertEqual(MODULE.display_evidence("pcb", lines, results, 3), (False, 2, False))
 
 
 if __name__ == "__main__":
