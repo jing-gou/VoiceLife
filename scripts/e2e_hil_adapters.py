@@ -194,10 +194,12 @@ class RealHilHardware:
     """Production adapters that reuse existing build, flash, provisioning and pairing scripts."""
 
     def __init__(self, server: str, server_directory: str, gateway_origin: str, user_id: str) -> None:
-        self._server = server
-        self._server_directory = server_directory
-        self._gateway_origin = gateway_origin
-        self._user_id = user_id
+        # GitHub secrets are commonly pasted with a trailing newline; normalize
+        # transport configuration before constructing SSH and provisioning calls.
+        self._server = server.strip()
+        self._server_directory = server_directory.strip()
+        self._gateway_origin = gateway_origin.strip()
+        self._user_id = user_id.strip()
         self._active_application_offset: int | None = None
 
     def _run(self, command: list[str], timeout_s: float, *, input_text: str | None = None) -> str:
