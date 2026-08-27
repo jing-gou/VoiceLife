@@ -98,6 +98,21 @@ jobs:
             fi
             command -v ffmpeg >/dev/null
           fi
+      - name: 加载 ESP-IDF 工具链
+        run: |
+          set -euo pipefail
+          idf_path="${IDF_PATH:-$HOME/esp/esp-idf}"
+          test -f "$idf_path/export.sh"
+          # export.sh 只影响当前 shell；将其关键环境和 PATH 条目传给后续 steps。
+          source "$idf_path/export.sh"
+          printf 'IDF_PATH=%s\n' "$IDF_PATH" >> "$GITHUB_ENV"
+          printf 'IDF_PYTHON_ENV_PATH=%s\n' "$IDF_PYTHON_ENV_PATH" >> "$GITHUB_ENV"
+          if [[ -n "${IDF_TOOLS_PATH:-}" ]]; then
+            printf 'IDF_TOOLS_PATH=%s\n' "$IDF_TOOLS_PATH" >> "$GITHUB_ENV"
+          fi
+          tr ':' '\n' <<< "$PATH" >> "$GITHUB_PATH"
+          command -v idf.py >/dev/null
+          command -v xtensa-esp32s3-elf-gcc >/dev/null
       - name: 运行 HIL journey
         id: journey
         run: |

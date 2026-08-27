@@ -25,7 +25,7 @@ def render(root: Path) -> str:
         status = str(document["status"]).upper()
         category = document["failure_category"] or "none"
         phase = document["failed_phase"] or "none"
-        diagnostics = document["diagnostics"] or {}
+        diagnostics = document.get("diagnostics") or {}
         diagnostic_text = "none"
         if diagnostics:
             diagnostic_text = str(diagnostics["code"])
