@@ -338,16 +338,15 @@ Status EnsureWifiStaConnected(const WifiProvisioningStatusSink& status_sink) {
         if (const esp_err_t error = esp_wifi_start(); error != ESP_OK && error != ESP_ERR_INVALID_STATE)
             return EspError("启动 ESP Wi-Fi", error);
         bool connected = false;
-        const int64_t connect_deadline_us =
-            esp_timer_get_time() + static_cast<int64_t>(kWifiConnectWindowMs) * 1000;
+        const int64_t connect_deadline_us = esp_timer_get_time() + static_cast<int64_t>(kWifiConnectWindowMs) * 1000;
         while (esp_timer_get_time() < connect_deadline_us) {
             xEventGroupClearBits(events, kWifiConnectedBit | kWifiFailedBit);
             if (const esp_err_t error = esp_wifi_connect(); error != ESP_OK && error != ESP_ERR_INVALID_STATE) {
                 return EspError("连接 Wi-Fi STA", error);
             }
             const int64_t remaining_us = connect_deadline_us - esp_timer_get_time();
-            const int wait_ms = static_cast<int>(std::min<int64_t>(
-                kWifiConnectTimeoutMs, std::max<int64_t>(1, remaining_us / 1000)));
+            const int wait_ms =
+                static_cast<int>(std::min<int64_t>(kWifiConnectTimeoutMs, std::max<int64_t>(1, remaining_us / 1000)));
             const EventBits_t result = xEventGroupWaitBits(events, kWifiConnectedBit | kWifiFailedBit, pdFALSE, pdFALSE,
                                                            pdMS_TO_TICKS(wait_ms));
             wifi_ap_record_t access_point{};
