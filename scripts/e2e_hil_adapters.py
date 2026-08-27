@@ -199,7 +199,7 @@ class RealHilHardware:
         # transport configuration before constructing SSH and provisioning calls.
         self._server = server.strip()
         self._server_directory = server_directory.strip()
-        self._gateway_origin = gateway_origin.strip()
+        self._gateway_origin = gateway_origin.strip().rstrip("/")
         self._user_id = user_id.strip()
         self._active_application_offset: int | None = None
 

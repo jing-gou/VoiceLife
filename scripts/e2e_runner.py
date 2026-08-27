@@ -8,6 +8,7 @@ import re
 import secrets
 import shutil
 import signal
+import sys
 import tempfile
 import threading
 import time
