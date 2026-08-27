@@ -110,7 +110,7 @@ jobs:
           if [[ -n "${IDF_TOOLS_PATH:-}" ]]; then
             printf 'IDF_TOOLS_PATH=%s\n' "$IDF_TOOLS_PATH" >> "$GITHUB_ENV"
           fi
-          tr ':' '\n' <<< "$PATH" >> "$GITHUB_PATH"
+          printf 'PATH=%s\n' "$PATH" >> "$GITHUB_ENV"
           command -v idf.py >/dev/null
           command -v xtensa-esp32s3-elf-gcc >/dev/null
       - name: 运行 HIL journey
