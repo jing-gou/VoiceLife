@@ -62,6 +62,7 @@ jobs:
       ALIYUN_NLS_TOKEN: ${{ secrets.ALIYUN_NLS_TOKEN }}
       ALIYUN_NLS_URL: ${{ vars.ALIYUN_NLS_URL }}
       HIL_DEVICE_NAME: ${{ inputs.device || '' }}
+      ESP_IDF_VERSION: "6.0.2"
     defaults:
       run:
         shell: bash
