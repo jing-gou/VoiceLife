@@ -500,7 +500,12 @@ def parse_args() -> argparse.Namespace:
         "--result-json", type=Path, help="Optional local result summary; never contains credentials or audio."
     )
     args = parser.parse_args()
-    if args.baud <= 0 or args.response_timeout <= 0 or args.guard_observation_seconds < 8 or args.startup_settle_seconds < 0:
+    if (
+        args.baud <= 0
+        or args.response_timeout <= 0
+        or args.guard_observation_seconds < 8
+        or args.startup_settle_seconds < 0
+    ):
         parser.error("baud、response-timeout 和 guard-observation-seconds 必须有效，且观察窗口不得小于 8 秒")
     return args
 
