@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 import subprocess
+import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -218,6 +219,10 @@ class RealHilHardware:
         except OSError as error:
             raise RunnerFailure(FailureCategory.INFRASTRUCTURE, "hil_command_unavailable") from error
         if result.returncode != 0:
+            print(
+                f"HIL command failed: executable={Path(command[0]).name} exit_code={result.returncode}",
+                file=sys.stderr,
+            )
             raise RunnerFailure(FailureCategory.INFRASTRUCTURE, "hil_command_failed")
         return result.stdout
 
