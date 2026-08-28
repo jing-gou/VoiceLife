@@ -437,7 +437,6 @@ class ScheduleVoiceHilAdapter(ScheduleVoiceHostAdapter):
             "查询明天上午的产品评审",
         ]
         command = [str(ROOT / "scripts" / "run_bailian_sparkbot_test.sh"), "multiturn"]
-        command.extend(["--display-profile", self.profile])
         for text in texts:
             command.extend(["--text", text])
         command.extend(

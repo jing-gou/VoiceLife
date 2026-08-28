@@ -218,8 +218,6 @@ class ImHilAdapter(ImHostAdapter):
         command = [
             str(ROOT / "scripts" / "run_bailian_sparkbot_test.sh"),
             "multiturn",
-            "--display-profile",
-            self.profile,
             "--text",
             "查询今天的日程",
             "--allow-asr-mismatch",
