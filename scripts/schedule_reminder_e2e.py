@@ -5,8 +5,6 @@
 from __future__ import annotations
 
 import json
-import os
-import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -14,17 +12,11 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
-from e2e_hil_device import (
-    DeviceLease,
-    HilConfigurationError,
-    HilLeaseUnavailable,
-    load_device_descriptor,
-)  # noqa: E402
+from e2e_hil_adapters import HilVoiceAdapter  # noqa: E402
+from schedule_voice_e2e import create_voice_hil_adapter  # noqa: E402
 from e2e_runner import (  # noqa: E402
     AssertionResult,
-    FailureCategory,
     RunContext,
-    RunnerFailure,
 )
 
 SCENARIOS = (
@@ -204,51 +196,32 @@ class ReminderHilAdapter(ReminderHostAdapter):
             lease_directory,
             profile,
         )
-        self.lease: DeviceLease | None = None
+        self.voice_adapter: HilVoiceAdapter = create_voice_hil_adapter(
+            descriptor_path,
+            lease_directory,
+            profile,
+            ["知道了"],
+            45.0,
+        )
 
     def prepare(self, context: RunContext) -> None:
-        try:
-            descriptor = load_device_descriptor(self.descriptor_path, self.profile)
-            if not descriptor.port.exists():
-                raise RunnerFailure(FailureCategory.DEVICE, "serial_port_missing")
-            self.lease = DeviceLease(descriptor, self.lease_directory)
-            self.lease.acquire()
-            context.cleanup.push(
-                "reminder-device-lease", self.lease.release, timeout_required=False
-            )
-            self.descriptor = descriptor
-        except (HilConfigurationError, HilLeaseUnavailable) as error:
-            raise RunnerFailure(
-                FailureCategory.CONFIGURATION, "hil_descriptor_invalid"
-            ) from error
+        self.voice_adapter.prepare(context)
 
     def run(self, context: RunContext) -> dict[str, Any]:
-        if not os.environ.get("BAILIAN_KEY_FILE"):
-            raise RunnerFailure(
-                FailureCategory.CONFIGURATION, "bailian_key_file_missing"
-            )
-        command = [
-            str(ROOT / "scripts" / "run_bailian_sparkbot_test.sh"),
-            "multiturn",
-            "--text",
-            "知道了",
-            "--allow-asr-mismatch",
-            "--response-timeout",
-            str(max(30, int(context.phase_budget()))),
+        return self.voice_adapter.run(context)
+
+    def assert_result(
+        self, context: RunContext, result: object
+    ) -> list[AssertionResult]:
+        values = result if isinstance(result, dict) else {}
+        acceptance = values.get("acceptance")
+        acceptance_values = acceptance if isinstance(acceptance, dict) else {}
+        checks = {
+            "reminder_voice_turn_complete": values.get("completed_turns") == 1,
+            "reminder_state_flow_clean": acceptance_values.get("state_flow_complete") is True,
+            "reminder_display_flow_clean": acceptance_values.get("display_flow_complete") is True,
+        }
+        return [
+            AssertionResult(name, passed, "ok" if passed else "mismatch")
+            for name, passed in checks.items()
         ]
-        try:
-            completed = subprocess.run(
-                command,
-                cwd=ROOT,
-                capture_output=True,
-                text=True,
-                timeout=context.remaining(),
-                check=False,
-            )
-        except subprocess.TimeoutExpired as error:
-            raise RunnerFailure(
-                FailureCategory.TIMEOUT, "reminder_voice_timeout"
-            ) from error
-        if completed.returncode != 0:
-            raise RunnerFailure(FailureCategory.DEVICE, "reminder_voice_failed")
-        return {"status": "passed", "voice_report": "sanitized"}

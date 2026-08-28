@@ -27,6 +27,7 @@ from e2e_hil_device import (  # noqa: E402
     HilLeaseUnavailable,
     load_device_descriptor,
 )
+from e2e_hil_adapters import HilVoiceAdapter, RealHilHardware  # noqa: E402
 from e2e_runner import (  # noqa: E402
     AssertionResult,
     FailureCategory,
@@ -392,6 +393,41 @@ class ScheduleVoiceHostAdapter:
         }
 
 
+def create_voice_hil_adapter(
+    descriptor_path: Path,
+    lease_directory: Path,
+    profile: str,
+    texts: list[str],
+    response_timeout: float,
+) -> HilVoiceAdapter:
+    values = {
+        name: os.environ.get(name, "").strip()
+        for name in (
+            "VOICELIFE_HIL_SERVER",
+            "VOICELIFE_HIL_SERVER_DIR",
+            "VOICELIFE_HIL_GATEWAY_ORIGIN",
+            "VOICELIFE_HIL_USER_ID",
+        )
+    }
+    if not all(values.values()):
+        raise RunnerFailure(FailureCategory.CONFIGURATION, "hil_gateway_config_missing")
+    return HilVoiceAdapter(
+        descriptor_path,
+        lease_directory,
+        hardware=RealHilHardware(
+            values["VOICELIFE_HIL_SERVER"],
+            values["VOICELIFE_HIL_SERVER_DIR"],
+            values["VOICELIFE_HIL_GATEWAY_ORIGIN"],
+            values["VOICELIFE_HIL_USER_ID"],
+        ),
+        tts_model=os.environ.get("VOICELIFE_TTS_MODEL", "qwen-audio-3.0-tts-flash"),
+        voice=os.environ.get("VOICELIFE_TTS_VOICE", "longanlingxi"),
+        texts=texts,
+        expect_terminal=False,
+        response_timeout=response_timeout,
+    )
+
+
 class ScheduleVoiceHilAdapter(ScheduleVoiceHostAdapter):
     def __init__(
         self,
@@ -408,65 +444,24 @@ class ScheduleVoiceHilAdapter(ScheduleVoiceHostAdapter):
             profile,
             scenario,
         )
-        self.lease: DeviceLease | None = None
+        self.voice_adapter = create_voice_hil_adapter(
+            descriptor_path,
+            lease_directory,
+            profile,
+            [
+                "明天上午十点安排产品评审，地点在会议室，备注带上方案",
+                "查询明天上午的产品评审",
+            ],
+            45.0,
+        )
         self.process_result: dict[str, Any] = {}
 
     def prepare(self, context: RunContext) -> None:
-        try:
-            descriptor = load_device_descriptor(self.descriptor_path, self.profile)
-            if not descriptor.port.exists():
-                raise RunnerFailure(FailureCategory.DEVICE, "serial_port_missing")
-            self.lease = DeviceLease(descriptor, self.lease_directory)
-            self.lease.acquire()
-            context.cleanup.push(
-                "voice-device-lease", self.lease.release, timeout_required=False
-            )
-            self.descriptor = descriptor
-        except (HilConfigurationError, HilLeaseUnavailable) as error:
-            raise RunnerFailure(
-                FailureCategory.CONFIGURATION, "hil_descriptor_invalid"
-            ) from error
+        self.voice_adapter.prepare(context)
 
     def run(self, context: RunContext) -> dict[str, Any]:
-        if not os.environ.get("BAILIAN_KEY_FILE"):
-            raise RunnerFailure(
-                FailureCategory.CONFIGURATION, "bailian_key_file_missing"
-            )
-        texts = [
-            "明天上午十点安排产品评审，地点在会议室，备注带上方案",
-            "查询明天上午的产品评审",
-        ]
-        command = [str(ROOT / "scripts" / "run_bailian_sparkbot_test.sh"), "multiturn"]
-        for text in texts:
-            command.extend(["--text", text])
-        command.extend(
-            [
-                "--response-timeout",
-                str(max(30, int(context.phase_budget()))),
-                "--allow-asr-mismatch",
-            ]
-        )
-        try:
-            completed = subprocess.run(
-                command,
-                cwd=ROOT,
-                capture_output=True,
-                text=True,
-                timeout=context.remaining(),
-                check=False,
-            )
-        except subprocess.TimeoutExpired as error:
-            raise RunnerFailure(
-                FailureCategory.TIMEOUT, "voice_journey_timeout"
-            ) from error
-        report = _last_json_object(completed.stdout)
-        if completed.returncode != 0:
-            _write_harness_failure_summary(completed.returncode, report)
-            raise RunnerFailure(FailureCategory.DEVICE, "voice_journey_failed")
-        if not report:
-            raise RunnerFailure(FailureCategory.PRODUCT, "voice_report_missing")
-        self.process_result = report
-        return report
+        self.process_result = self.voice_adapter.run(context)
+        return self.process_result
 
     def assert_result(
         self, context: RunContext, result: object
