@@ -90,6 +90,12 @@ jobs:
         id: journey
         run: |
           set +e
+          idf_export="${IDF_PATH:-$HOME/esp/esp-idf}/export.sh"
+          if [[ ! -r "$idf_export" ]]; then
+            echo "ESP-IDF export.sh is unavailable" >&2
+            exit 2
+          fi
+          source "$idf_export"
           mkdir -p "artifacts/hil-${{ matrix.profile }}"
           device_name="$HIL_DEVICE_NAME"
           if [[ -n "$device_name" ]]; then
