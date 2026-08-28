@@ -512,6 +512,15 @@ def _write_harness_failure_summary(returncode: int, report: dict[str, Any] | Non
     ) if isinstance(acceptance, dict) else []
     completed_turns = report.get("completed_turns") if isinstance(report, dict) else None
     requested_turns = report.get("requested_turns") if isinstance(report, dict) else None
+    result_errors = report.get("results") if isinstance(report, dict) else []
+    error_kinds = []
+    if isinstance(result_errors, list):
+        for result in result_errors:
+            if not isinstance(result, dict) or not isinstance(result.get("error"), str):
+                continue
+            kind = result["error"].split(":", 1)[0]
+            if re.fullmatch(r"[a-z][a-z0-9_]{0,63}", kind):
+                error_kinds.append(kind)
     print(
         json.dumps(
             {
@@ -520,6 +529,7 @@ def _write_harness_failure_summary(returncode: int, report: dict[str, Any] | Non
                 "harness_completed_turns": completed_turns if isinstance(completed_turns, int) else None,
                 "harness_requested_turns": requested_turns if isinstance(requested_turns, int) else None,
                 "harness_failed_checks": failed_checks,
+                "harness_error_kinds": sorted(set(error_kinds)),
             },
             ensure_ascii=True,
             sort_keys=True,
