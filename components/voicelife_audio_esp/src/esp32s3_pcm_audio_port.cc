@@ -284,9 +284,10 @@ Status Esp32s3PcmAudioPorts::Impl::OpenOutput(const voice::AudioFormat& format) 
         return Status::Error(ErrorCode::kConflict, "输出端口正在关闭，请等待关闭完成后重开");
     }
     if (output_open_) {
-        return playback_format_.has_value() && detail::SameFormat(*playback_format_, format, true)
-                   ? Status::Ok()
-                   : Status::Error(ErrorCode::kConflict, "输出端口已经以其他格式打开");
+        // The physical playback clock is fixed by the board profile. Linx may
+        // negotiate a different PCM rate; PushOutput resamples it into the
+        // already prepared hardware format, so reopening is idempotent.
+        return Status::Ok();
     }
     if (profile_.topology != AudioBoardTopology::kDirectI2sSimplex &&
         profile_.topology != AudioBoardTopology::kExternalCodecDuplex) {

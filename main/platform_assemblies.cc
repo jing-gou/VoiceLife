@@ -46,9 +46,20 @@ voicelife::display_sparkbot::SparkBotLcdConfig MakeSparkBotLcdConfig() {
 
 }  // namespace
 
-VoiceLifePcbAssembly::VoiceLifePcbAssembly() : audio_ports_(audio_esp::VoiceLifePcbEsp32s3Profile()) {
+VoiceLifePcbAssembly::VoiceLifePcbAssembly()
+    : audio_ports_(audio_esp::VoiceLifePcbEsp32s3Profile(),
+                   {.output_queue_depth = audio_esp::kSparkBotPlaybackQueueDepth,
+                    .maximum_playback_latency_ms = audio_esp::kSparkBotPlaybackLatencyBudgetMs}) {
     wake_detector_ = std::make_unique<audio_esp::EspMultiNetWakeDetector>();
-    wake_gate_ = std::make_unique<voice::WakeGateAudioInput>(audio_ports_.input(), *wake_detector_, true);
+#if CONFIG_VOICELIFE_SERIAL_VOICE_TEST
+    // Serial PCM injection drives the voice session directly; loading the
+    // local wake model during TLS startup creates an avoidable PSRAM/internal
+    // heap peak and is outside this test's scope.
+    constexpr bool kLocalWakeEnabled = false;
+#else
+    constexpr bool kLocalWakeEnabled = true;
+#endif
+    wake_gate_ = std::make_unique<voice::WakeGateAudioInput>(audio_ports_.input(), *wake_detector_, kLocalWakeEnabled);
 }
 
 voicelife::voice::PresentationPort& VoiceLifePcbAssembly::presentation() { return ssd1306_adapter_; }

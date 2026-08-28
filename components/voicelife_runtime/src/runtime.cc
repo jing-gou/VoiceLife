@@ -545,10 +545,16 @@ class Runtime final {
         }
         mcp_stop_ = false;
         mcp_stopped_.store(false);
-        if (xTaskCreate(&Runtime::McpWorkerTaskEntry, "voicelife_mcp", 32768, this, 4, &mcp_task_) != pdPASS) {
+        // MCP tools can persist schedule state through SPI/NVS while the
+        // flash cache is disabled, so the worker stack must remain internal.
+        // Keep it bounded to leave contiguous internal RAM for Linx/TLS.
+        constexpr uint32_t kMcpWorkerStackBytes = 16 * 1024;
+        if (xTaskCreateWithCaps(&Runtime::McpWorkerTaskEntry, "voicelife_mcp", kMcpWorkerStackBytes, this, 4,
+                                &mcp_task_, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT) != pdPASS) {
             return Status::Error(ErrorCode::kInternal, "创建 MCP 工作任务失败");
         }
-        ESP_LOGI(kTag, "MCP_WORKER_READY capacity=%u", static_cast<unsigned>(kMcpWorkerQueueCapacity));
+        ESP_LOGI(kTag, "MCP_WORKER_READY capacity=%u stack_bytes=%u caps=internal",
+                 static_cast<unsigned>(kMcpWorkerQueueCapacity), static_cast<unsigned>(kMcpWorkerStackBytes));
         return Status::Ok();
     }
 
@@ -740,7 +746,7 @@ class Runtime final {
             request->completed_cv.notify_one();
         }
         mcp_stopped_.store(true);
-        vTaskDelete(nullptr);
+        vTaskDeleteWithCaps(nullptr);
     }
 
     void ReserveImRuntimeTask() {

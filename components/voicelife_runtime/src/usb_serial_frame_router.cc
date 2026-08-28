@@ -165,6 +165,7 @@ Status StartUsbSerialFrameRouter() {
         usb_serial_jtag_driver_config_t config = {
             .tx_buffer_size = 1024,
             .rx_buffer_size = 2048,
+            .intr_priority = 0,
         };
         if (usb_serial_jtag_driver_install(&config) != ESP_OK) {
             g_started.store(false);
@@ -182,10 +183,12 @@ Status StartUsbSerialFrameRouter() {
         return Status::Error(ErrorCode::kUnavailable, "创建 USB 串口帧队列失败");
     }
 #if CONFIG_SPIRAM && (configSUPPORT_STATIC_ALLOCATION == 1)
-    if (xTaskCreateWithCaps(&RouterTask, "usb_frame_router", 4096, nullptr, 4, nullptr,
+    constexpr uint32_t kRouterTaskStackBytes = 8192;
+    if (xTaskCreateWithCaps(&RouterTask, "usb_frame_router", kRouterTaskStackBytes, nullptr, 4, nullptr,
                             MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT) != pdPASS) {
 #else
-    if (xTaskCreate(&RouterTask, "usb_frame_router", 4096, nullptr, 4, nullptr) != pdPASS) {
+    constexpr uint32_t kRouterTaskStackBytes = 8192;
+    if (xTaskCreate(&RouterTask, "usb_frame_router", kRouterTaskStackBytes, nullptr, 4, nullptr) != pdPASS) {
 #endif
         vQueueDelete(g_im_queue);
         vQueueDelete(g_voice_queue);
