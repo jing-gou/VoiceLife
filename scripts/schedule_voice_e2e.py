@@ -497,7 +497,7 @@ def _last_json_object(output: str) -> dict[str, Any] | None:
             value, _ = decoder.raw_decode(output[index:])
         except json.JSONDecodeError:
             continue
-        if isinstance(value, dict):
+        if isinstance(value, dict) and isinstance(value.get("acceptance"), dict):
             return value
     return None
 
