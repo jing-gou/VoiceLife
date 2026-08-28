@@ -378,6 +378,10 @@ class HilVoiceAdapter:
             build_directory = self._hardware.build(voice_descriptor)
             self._image = self._hardware.image(build_directory, self._descriptor, self._partitions)
             self._hardware.flash(voice_descriptor, self._image, context.remaining())
+            serial_port = getattr(self._hardware, "serial_port", None)
+            if callable(serial_port):
+                voice_descriptor = replace(voice_descriptor, port=serial_port(voice_descriptor))
+                self._descriptor = voice_descriptor
             self._pending_device_id = f"e2e-{context.run_id}"
             context.cleanup.push("voice-gateway-device-revoke", self._revoke)
             self._identity = self._hardware.register(context.run_id)
@@ -456,6 +460,25 @@ class RealHilHardware:
         self._gateway_origin = gateway_origin
         self._user_id = user_id
         self._active_application_offset: int | None = None
+        self._active_port: Path | None = None
+
+    @staticmethod
+    def _available_usb_ports() -> list[Path]:
+        return sorted(Path("/dev").glob("cu.usbmodem*"))
+
+    def _wait_for_port(self, preferred: Path, timeout_s: float = 15.0) -> Path:
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            if preferred.exists():
+                return preferred
+            candidates = self._available_usb_ports()
+            if candidates:
+                return candidates[0]
+            time.sleep(0.2)
+        raise RunnerFailure(FailureCategory.DEVICE, "serial_port_missing_after_reset")
+
+    def serial_port(self, descriptor: DeviceDescriptor) -> Path:
+        return self._active_port or descriptor.port
 
     def _run(self, command: list[str], timeout_s: float, *, input_text: str | None = None) -> str:
         try:
@@ -480,13 +503,15 @@ class RealHilHardware:
         try:
             from sqlite_board_probe_io import read_flash, read_layout
 
-            partitions = read_layout(descriptor.port.as_posix(), 115200, temporary_directory / "partition-table.bin")
+            port = self._wait_for_port(self.serial_port(descriptor))
+            self._active_port = port
+            partitions = read_layout(port.as_posix(), 115200, temporary_directory / "partition-table.bin")
             application = validate_device_layout(descriptor, partitions)
             if descriptor.profile == "pcb":
                 otadata = next(partition for partition in partitions if partition.label == "otadata")
                 otadata_path = temporary_directory / "otadata.bin"
                 read_flash(
-                    descriptor.port.as_posix(),
+                    port.as_posix(),
                     115200,
                     otadata.offset,
                     otadata.size,
@@ -521,8 +546,16 @@ class RealHilHardware:
             raise RunnerFailure(FailureCategory.INFRASTRUCTURE, "active_application_unknown")
         if image.offset != self._active_application_offset:
             image = ApplicationImage(image.path, self._active_application_offset, image.size, image.sha256)
-        for operation in application_flash_operations(descriptor.port, image):
+        active_port = self._wait_for_port(self.serial_port(descriptor))
+        for operation_kind in ("write", "verify"):
+            operation = next(
+                item
+                for item in application_flash_operations(active_port, image)
+                if item.kind == operation_kind
+            )
             self._run(list(operation.argv), timeout_s)
+            active_port = self._wait_for_port(active_port)
+            self._active_port = active_port
 
     def _remote(self, script: str, timeout_s: float = 180.0) -> str:
         try:
@@ -574,7 +607,7 @@ class RealHilHardware:
                 ROOT / "scripts" / "provision_im_config.py",
                 [
                     "--port",
-                    str(descriptor.port),
+                    str(self.serial_port(descriptor)),
                     "--gateway-origin",
                     self._gateway_origin,
                     "--device-id",
@@ -602,7 +635,7 @@ class RealHilHardware:
             raise RunnerFailure(FailureCategory.CONFIGURATION, "pyserial_unavailable") from error
         signals: list[dict[str, object]] = [{"signal": "provisioned"}]
         deadline = time.monotonic() + timeout_s
-        with serial.Serial(descriptor.port.as_posix(), 115200, timeout=0.2, write_timeout=2) as device:
+        with serial.Serial(self.serial_port(descriptor).as_posix(), 115200, timeout=0.2, write_timeout=2) as device:
             device.dtr = False
             device.rts = True
             time.sleep(0.15)
@@ -631,7 +664,7 @@ class RealHilHardware:
             raise RunnerFailure(FailureCategory.CONFIGURATION, "pyserial_unavailable") from error
         events: list[dict[str, str]] = []
         deadline = time.monotonic() + timeout_s
-        with serial.Serial(descriptor.port.as_posix(), 115200, timeout=0.2, write_timeout=2) as device:
+        with serial.Serial(self.serial_port(descriptor).as_posix(), 115200, timeout=0.2, write_timeout=2) as device:
             device.write(trigger_payload(1))
             device.flush()
             while time.monotonic() < deadline:
@@ -656,7 +689,7 @@ class RealHilHardware:
             import serial
         except ImportError as error:
             raise RunnerFailure(FailureCategory.CONFIGURATION, "pyserial_unavailable") from error
-        with serial.Serial(descriptor.port.as_posix(), 115200, timeout=0.2, write_timeout=2) as device:
+        with serial.Serial(self.serial_port(descriptor).as_posix(), 115200, timeout=0.2, write_timeout=2) as device:
             device.dtr = False
             device.rts = True
             time.sleep(0.15)
