@@ -287,6 +287,19 @@ Status EnsureWifiStaConnected(const WifiProvisioningStatusSink& status_sink) {
         if (const Status prepared = PrepareWifiForProvisioning(); !prepared.ok()) return prepared;
         provisioning_cause =
             force_provisioning ? WifiProvisioningCause::kUserRequested : WifiProvisioningCause::kMissingCredentials;
+#if CONFIG_VOICELIFE_SERIAL_VOICE_TEST
+        // Serial-voice HIL has a controlled USB link and no interactive browser.
+        // Open that short deterministic window before the long SoftAP fallback.
+        const Status serial_first = ProvisionWifiCredentialsFromConsole(kProvisionTimeoutMs);
+        if (serial_first.ok()) {
+            stored_credentials = LoadWifiCredentials();
+            if (!stored_credentials.ok() || !stored_credentials.value.has_value()) return stored_credentials.status;
+            credentials = std::move(*stored_credentials.value);
+        }
+        if (!credentials.ssid.empty()) {
+            // Credentials arrived over the physical link; continue with STA setup.
+        } else {
+#endif
         auto candidate = GetSoftApCandidate(provisioning_cause, status_sink);
         if (!candidate.ok() || !candidate.value.has_value()) {
             // 保留串口作为无显示/诊断环境中的最后回退；热点超时不会清除任何密钥。
@@ -299,6 +312,9 @@ Status EnsureWifiStaConnected(const WifiProvisioningStatusSink& status_sink) {
             credentials = {.ssid = std::move(candidate.value->ssid), .password = std::move(candidate.value->password)};
             candidate_requires_persistence = true;
         }
+#if CONFIG_VOICELIFE_SERIAL_VOICE_TEST
+        }
+#endif
     }
     static EventGroupHandle_t events = nullptr;
     static bool initialized = false;

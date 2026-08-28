@@ -382,6 +382,9 @@ class HilVoiceAdapter:
             if callable(serial_port):
                 voice_descriptor = replace(voice_descriptor, port=serial_port(voice_descriptor))
                 self._descriptor = voice_descriptor
+            provision_wifi = getattr(self._hardware, "provision_wifi", None)
+            if callable(provision_wifi):
+                provision_wifi(self._descriptor, context.remaining())
             self._pending_device_id = f"e2e-{context.run_id}"
             context.cleanup.push("voice-gateway-device-revoke", self._revoke)
             self._identity = self._hardware.register(context.run_id)
@@ -622,6 +625,29 @@ class RealHilHardware:
             )
         except SystemExit as error:
             raise RunnerFailure(FailureCategory.DEVICE, "usb_provisioning_failed") from error
+
+    def provision_wifi(self, descriptor: DeviceDescriptor, timeout_s: float) -> None:
+        ssid = os.environ.get("VOICELIFE_HIL_WIFI_SSID", "").strip()
+        password = os.environ.get("VOICELIFE_HIL_WIFI_PASSWORD", "")
+        if not ssid or not password:
+            return
+        from provision_device import run_with_getpass
+
+        try:
+            run_with_getpass(
+                ROOT / "scripts" / "provision_linx_wifi.py",
+                [
+                    "--port",
+                    str(self.serial_port(descriptor)),
+                    "--ssid",
+                    ssid,
+                    "--timeout",
+                    str(timeout_s),
+                ],
+                password,
+            )
+        except SystemExit as error:
+            raise RunnerFailure(FailureCategory.DEVICE, "wifi_provisioning_failed") from error
 
     def reboot_and_readiness(self, descriptor: DeviceDescriptor, timeout_s: float) -> list[dict[str, object]]:
         return self._read_serial_readiness(descriptor, timeout_s)
