@@ -437,6 +437,7 @@ class ScheduleVoiceHilAdapter(ScheduleVoiceHostAdapter):
             "查询明天上午的产品评审",
         ]
         command = [str(ROOT / "scripts" / "run_bailian_sparkbot_test.sh"), "multiturn"]
+        command.extend(["--display-profile", self.profile])
         for text in texts:
             command.extend(["--text", text])
         command.extend(
@@ -487,11 +488,13 @@ class ScheduleVoiceHilAdapter(ScheduleVoiceHostAdapter):
 
 def _last_json_object(output: str) -> dict[str, Any] | None:
     decoder = json.JSONDecoder()
-    for line in reversed(output.splitlines()):
-        if not line.startswith("{"):
-            continue
+    # The serial voice harness pretty-prints its report across multiple lines;
+    # decode from each candidate object boundary instead of requiring one-line
+    # JSON output.
+    candidates = [index for index, character in enumerate(output) if character == "{"]
+    for index in reversed(candidates):
         try:
-            value, _ = decoder.raw_decode(line)
+            value, _ = decoder.raw_decode(output[index:])
         except json.JSONDecodeError:
             continue
         if isinstance(value, dict):

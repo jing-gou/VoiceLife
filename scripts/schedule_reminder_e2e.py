@@ -230,6 +230,8 @@ class ReminderHilAdapter(ReminderHostAdapter):
         command = [
             str(ROOT / "scripts" / "run_bailian_sparkbot_test.sh"),
             "multiturn",
+            "--display-profile",
+            self.profile,
             "--text",
             "知道了",
             "--allow-asr-mismatch",
