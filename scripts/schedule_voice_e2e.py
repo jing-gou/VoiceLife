@@ -521,6 +521,12 @@ def _write_harness_failure_summary(returncode: int, report: dict[str, Any] | Non
             kind = result["error"].split(":", 1)[0]
             if re.fullmatch(r"[a-z][a-z0-9_]{0,63}", kind):
                 error_kinds.append(kind)
+    event_kinds = report.get("event_kinds") if isinstance(report, dict) else []
+    if not isinstance(event_kinds, list):
+        event_kinds = []
+    event_kinds = [
+        value for value in event_kinds if isinstance(value, str) and re.fullmatch(r"[a-z][a-z0-9_]{0,63}", value)
+    ]
     print(
         json.dumps(
             {
@@ -530,6 +536,8 @@ def _write_harness_failure_summary(returncode: int, report: dict[str, Any] | Non
                 "harness_requested_turns": requested_turns if isinstance(requested_turns, int) else None,
                 "harness_failed_checks": failed_checks,
                 "harness_error_kinds": sorted(set(error_kinds)),
+                "harness_event_kinds": sorted(set(event_kinds)),
+                "harness_event_count": len(event_kinds),
             },
             ensure_ascii=True,
             sort_keys=True,

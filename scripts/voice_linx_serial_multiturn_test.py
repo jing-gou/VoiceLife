@@ -620,6 +620,13 @@ def main() -> int:
     interaction_stats = [parse_audio_stats(line) for line in raw_lines if "INTERACTION_QUEUE_STATS" in line]
     interaction_keys = ("control_dropped", "best_effort_dropped", "board_dropped")
     serial_pcm_rejections = [line for line in raw_lines if "SERIAL_VOICE_PCM=reject" in line]
+    event_kinds = sorted(
+        {
+            match.group(1)
+            for line in raw_lines
+            if (match := re.search(r"(?:SERIAL_VOICE_EVIDENCE event=|event=)([a-z0-9_]+)", line))
+        }
+    )
     required_active_phases = (3, 4, 5, 6)
     rendered_text_lines = [line for line in raw_lines if "SPARKBOT_TEXT_RENDER" in line]
     display_text_trace_complete, display_content_snapshots, display_scroll_observed = display_evidence(
@@ -664,6 +671,7 @@ def main() -> int:
         "last_audio_stats": last_audio_stats,
         "audio_stats": audio_stats,
         "serial_pcm_rejections": serial_pcm_rejections,
+        "event_kinds": event_kinds,
         "display": {
             "rendered_text_snapshots": len(rendered_text_lines),
             "content_snapshots": display_content_snapshots,
