@@ -459,9 +459,10 @@ class ScheduleVoiceHilAdapter(ScheduleVoiceHostAdapter):
             raise RunnerFailure(
                 FailureCategory.TIMEOUT, "voice_journey_timeout"
             ) from error
-        if completed.returncode != 0:
-            raise RunnerFailure(FailureCategory.DEVICE, "voice_journey_failed")
         report = _last_json_object(completed.stdout)
+        if completed.returncode != 0:
+            _write_harness_failure_summary(completed.returncode, report)
+            raise RunnerFailure(FailureCategory.DEVICE, "voice_journey_failed")
         if not report:
             raise RunnerFailure(FailureCategory.PRODUCT, "voice_report_missing")
         self.process_result = report
@@ -499,3 +500,29 @@ def _last_json_object(output: str) -> dict[str, Any] | None:
         if isinstance(value, dict):
             return value
     return None
+
+
+def _write_harness_failure_summary(returncode: int, report: dict[str, Any] | None) -> None:
+    """Emit only stable aggregate diagnostics; never expose serial or transcript data."""
+    acceptance = report.get("acceptance") if isinstance(report, dict) else {}
+    failed_checks = sorted(
+        name
+        for name, passed in acceptance.items()
+        if isinstance(name, str) and re.fullmatch(r"[a-z][a-z0-9_]{0,63}", name) and passed is False
+    ) if isinstance(acceptance, dict) else []
+    completed_turns = report.get("completed_turns") if isinstance(report, dict) else None
+    requested_turns = report.get("requested_turns") if isinstance(report, dict) else None
+    print(
+        json.dumps(
+            {
+                "harness_returncode": returncode,
+                "harness_report_present": report is not None,
+                "harness_completed_turns": completed_turns if isinstance(completed_turns, int) else None,
+                "harness_requested_turns": requested_turns if isinstance(requested_turns, int) else None,
+                "harness_failed_checks": failed_checks,
+            },
+            ensure_ascii=True,
+            sort_keys=True,
+        ),
+        file=sys.stderr,
+    )
