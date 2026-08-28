@@ -275,7 +275,20 @@ Status EnsureWifiStaConnected(const WifiProvisioningStatusSink& status_sink) {
     WifiCredentials credentials;
     WifiProvisioningCause provisioning_cause = WifiProvisioningCause::kMissingCredentials;
     if (!force_provisioning && stored_credentials.ok() && stored_credentials.value.has_value()) {
+#if CONFIG_VOICELIFE_SERIAL_VOICE_TEST
+        // HIL may leave an old SSID in encrypted NVS. Give the controlled USB
+        // runner a chance to replace it before attempting that stale network.
+        const Status serial_override = ProvisionWifiCredentialsFromConsole(kProvisionTimeoutMs);
+        if (serial_override.ok()) {
+            stored_credentials = LoadWifiCredentials();
+            if (!stored_credentials.ok() || !stored_credentials.value.has_value()) return stored_credentials.status;
+            credentials = std::move(*stored_credentials.value);
+        } else {
+            credentials = std::move(*stored_credentials.value);
+        }
+#else
         credentials = std::move(*stored_credentials.value);
+#endif
     } else {
         if (stored_credentials.status.code != ErrorCode::kNotFound && !force_provisioning)
             return stored_credentials.status;
