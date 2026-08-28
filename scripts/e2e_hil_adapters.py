@@ -391,6 +391,9 @@ class HilVoiceAdapter:
             self._device_fingerprint = device_fingerprint(self._identity.device_id, context.run_id)
             context.cleanup.push("voice-hil-device-recovery", self._recover)
             self._hardware.provision(self._descriptor, self._identity, context.remaining())
+            refresh_port = getattr(self._hardware, "refresh_port", None)
+            if callable(refresh_port):
+                self._descriptor = replace(self._descriptor, port=refresh_port(self._descriptor))
             self._readiness = self._hardware.reboot_and_readiness(self._descriptor, context.remaining())
             ready, _ = hil_readiness_status(self._readiness)
             if not ready:
@@ -482,6 +485,14 @@ class RealHilHardware:
 
     def serial_port(self, descriptor: DeviceDescriptor) -> Path:
         return self._active_port or descriptor.port
+
+    def refresh_port(self, descriptor: DeviceDescriptor) -> Path:
+        # IM provisioning restarts the application after acknowledging the frame.
+        # Allow USB-Serial/JTAG to detach and re-enumerate before readiness opens it.
+        time.sleep(0.8)
+        port = self._wait_for_port(self.serial_port(descriptor), timeout_s=20.0)
+        self._active_port = port
+        return port
 
     def _run(self, command: list[str], timeout_s: float, *, input_text: str | None = None) -> str:
         try:
